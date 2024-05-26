@@ -23,18 +23,18 @@ fn print_calibration_image() -> Vec<char> {
             palette.push(ch);
         }
     }
-    palette.push(' ');
-    // println!("{}", palette.len());
-    // print!("{}\n█", "█".repeat(33 * 2 + 2));
-    // for y in 0..10 {
-    //     for x in 0..33 {
-    //         use termion::color::*;
-    //         print!("{}{}{} ", Fg(White), Bg(Black), palette[y * 33 + x]);
-    //     }
-    //     print!("█\n█");
-    //     print!("{}█\n█", " ".repeat(33 * 2));
-    // }
-    // print!("{}\n", "█".repeat(33 * 2 + 1));
+    palette.extend_from_slice(&"⎻⎽⎺⎼".chars().collect::<Vec<_>>());
+    println!("{}", palette.len());
+    print!("{}\n█", "█".repeat(37 * 2 + 2));
+    for y in 0..9 {
+        for x in 0..37 {
+            use termion::color::*;
+            print!("{}{}{} ", Fg(White), Bg(Black), palette[y * 37 + x]);
+        }
+        print!("█\n█");
+        print!("{}█\n█", " ".repeat(37 * 2));
+    }
+    print!("{}\n", "█".repeat(37 * 2 + 1));
     return palette;
 }
 
@@ -284,8 +284,7 @@ fn create_calibration_matrices<const W: usize, const H: usize>(dct: bool) -> Vec
     for map_y in 0..y_res {
         for map_x in 0..x_res {
             let img_mat = Matrix::from_image_part(&img, map_x * 2, map_y * 2);
-            let dct_mat = forward_dct(&img_mat);
-            matrices.push(if dct { dct_mat } else { img_mat });
+            matrices.push(if dct { forward_dct(&img_mat) } else { img_mat });
         }
     }
     matrices
@@ -544,11 +543,13 @@ fn main() {
     let matrices = create_calibration_matrices::<7, 16>(false);
     // println!("{}", matrices.len());
     let args = std::env::args().collect::<Vec<_>>();
+    let width = 2;
+    let height = 1;
     let img = ImageReader::open(&args[1])
         .unwrap()
         .decode()
         .unwrap()
-        .resize_exact(14, 16, FilterType::Triangle)
+        // .resize_exact(7 * width, 16 * height, FilterType::Triangle)
         .to_rgb8();
 
     // let img_mat = Matrix::<8, 8>::from_image_part(&img, 10, 10);
