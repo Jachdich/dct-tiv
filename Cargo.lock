@@ -201,6 +201,7 @@ dependencies = [
 [[package]]
 name = "fmtstring"
 version = "0.1.0"
+source = "git+https://github.com/Jachdich/fmtstring.git#04c16f10d7dcacd41d7ca21e01d857eba3075dbb"
 dependencies = [
  "oklab",
  "termion",
