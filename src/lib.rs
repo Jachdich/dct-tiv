@@ -66,8 +66,8 @@ impl<const W: usize, const H: usize> Matrix<W, H> {
         image: &image::RgbImage,
         x_pos: usize,
         y_pos: usize,
-        col1: &Colour,
-        col2: &Colour,
+        col1: Colour,
+        col2: Colour,
     ) -> Matrix<W, H> {
         let mut img_mat = Matrix::<W, H>::new();
         // let r = termion::color::Reset.bg_str();
@@ -83,8 +83,8 @@ impl<const W: usize, const H: usize> Matrix<W, H> {
                 let p = image.get_pixel((x + x_pos * W) as u32, (y + y_pos * H) as u32);
                 // print!("{} ", &Rgb(p.0[0], p.0[1], p.0[2]).bg_string());
                 let pixel_colour = Colour::from_rgb(p.0[0], p.0[1], p.0[2]);
-                let col1_err = colour_diff(col1, &pixel_colour);
-                let col2_err = colour_diff(col2, &pixel_colour);
+                let col1_err = colour_diff(col1.into(), pixel_colour.into());
+                let col2_err = colour_diff(col2.into(), pixel_colour.into());
                 img_mat.set(x, y, if col1_err > col2_err { 255.0 } else { 0.0 });
             }
             // print!("{}\r\n", termion::color::Reset.bg_str());
@@ -184,6 +184,7 @@ fn sqrt(x: f64) -> f64 {
 }
 
 // fuck you again
+#[inline(always)]
 fn cos(x: f64) -> f64 {
     x.cos()
 }
@@ -294,28 +295,12 @@ pub fn create_calibration_matrices<const W: usize, const H: usize>(dct: bool) ->
     matrices
 }
 
-fn colour_diff(a: &Colour, b: &Colour) -> f32 {
-    let Colour::Rgb {
-        r: ar,
-        g: ag,
-        b: ab,
-    } = a
-    else {
-        unreachable!()
-    };
-    let Colour::Rgb {
-        r: br,
-        g: bg,
-        b: bb,
-    } = b
-    else {
-        unreachable!()
-    };
-    let oklab_a = oklab::srgb_to_oklab(oklab::RGB::<u8>::new(*ar, *ag, *ab));
-    let oklab_b = oklab::srgb_to_oklab(oklab::RGB::<u8>::new(*br, *bg, *bb));
-    let dl = oklab_a.l - oklab_b.l;
-    let da = oklab_a.a - oklab_b.a;
-    let db = oklab_a.b - oklab_b.b;
+use oklab::Oklab;
+
+fn colour_diff(a: Oklab, b: Oklab) -> f32 {
+    let dl = a.l - b.l;
+    let da = a.a - b.a;
+    let db = a.b - b.b;
     dl * dl + da * da + db * db
 }
 
@@ -343,7 +328,7 @@ fn get_image_dominant_colours(img: &image::RgbImage, x0: usize, y0: usize) -> (C
     }
 
     // let mut max_colours = (Colour::from_rgb(0, 0, 0), Colour::from_rgb(0, 0, 0));
-    const SIZE: usize = 16;
+    const SIZE: usize = 8;
     let mut space = [(oklab::srgb_to_oklab(oklab::RGB::new(0, 0, 0)), 0); SIZE * SIZE * SIZE];
 
     for idx in 0..(7 * 16) {
@@ -352,9 +337,9 @@ fn get_image_dominant_colours(img: &image::RgbImage, x0: usize, y0: usize) -> (C
             unreachable!()
         };
         let c = oklab::srgb_to_oklab(oklab::RGB::<u8>::new(r, g, b));
-        let x = (c.l * SIZE as f32) as usize;
-        let y = (c.a * SIZE as f32) as usize;
-        let z = (c.b * SIZE as f32) as usize;
+        let x = (c.l * (SIZE as f32)) as usize;
+        let y = ((c.a + 1.0) / 2.0 * (SIZE as f32)) as usize;
+        let z = ((c.b + 1.0) / 2.0 * (SIZE as f32)) as usize;
 
         space[z * SIZE * SIZE + y * SIZE + x].0.l += c.l;
         space[z * SIZE * SIZE + y * SIZE + x].0.a += c.a;
@@ -362,24 +347,43 @@ fn get_image_dominant_colours(img: &image::RgbImage, x0: usize, y0: usize) -> (C
         space[z * SIZE * SIZE + y * SIZE + x].1 += 1;
     }
 
-    let m = space.iter().enumerate().max_by_key(|x| x.1 .1).unwrap();
+    const WEIGHT: f32 = 10000000.0;
+
+    let avg_colour = |(colour, count): (oklab::Oklab, usize)| {
+        if count != 0 {
+            oklab::Oklab {
+                l: colour.l / count as f32,
+                a: colour.a / count as f32,
+                b: colour.b / count as f32,
+            }
+        } else {
+            oklab::Oklab {
+                l: 0.0,
+                a: 0.0,
+                b: 0.0,
+            }
+        }
+    };
+
+    let (m_idx, m) = space.iter().enumerate().max_by_key(|x| x.1 .1).unwrap();
+    let biggest_n = m.1;
+    let m = avg_colour(*m);
     let m2 = space
         .iter()
         .enumerate()
-        .filter(|x| x.0 != m.0)
-        .max_by_key(|x| x.1 .1)
-        .unwrap_or(m); // 2nd max
+        .filter(|x| x.0 != m_idx)
+        // .max_by_key(|x| x.1 .1 * (colour_diff(x.1 .0, m.1 .0) * WEIGHT) as usize)
+        .max_by_key(|x| {
+            if x.1 .1 == 0 {
+                0
+            } else {
+                (colour_diff(avg_colour(*x.1), m) * 100000.0) as usize
+            }
+        })
+        .unwrap(); // 2nd max
 
-    let m = oklab::oklab_to_srgb(oklab::Oklab {
-        l: m.1 .0.l / m.1 .1 as f32,
-        a: m.1 .0.a / m.1 .1 as f32,
-        b: m.1 .0.b / m.1 .1 as f32,
-    });
-    let m2 = oklab::oklab_to_srgb(oklab::Oklab {
-        l: m2.1 .0.l / m2.1 .1 as f32,
-        a: m2.1 .0.a / m2.1 .1 as f32,
-        b: m2.1 .0.b / m2.1 .1 as f32,
-    });
+    let m = oklab::oklab_to_srgb(m);
+    let m2 = oklab::oklab_to_srgb(avg_colour(*m2.1));
     let max_colours = (
         Colour::from_rgb(m.r, m.g, m.b),
         Colour::from_rgb(m2.r, m2.g, m2.b),
@@ -400,15 +404,39 @@ fn get_image_dominant_colours(img: &image::RgbImage, x0: usize, y0: usize) -> (C
     //         }
     //     }
     // }
-    let img_mat = Matrix::<7, 16>::from_image_part_with_colours(
-        img,
-        x0 / 7,
-        y0 / 16,
-        &max_colours.0,
-        &max_colours.1,
-    );
+    // let img_mat = Matrix::<7, 16>::from_image_part_with_colours(
+    //     img,
+    //     x0 / 7,
+    //     y0 / 16,
+    //     max_colours.0,
+    //     max_colours.1,
+    // );
 
     // println!();
+
+    // for x in 0..SIZE {
+    //     for y in 0..SIZE {
+    //         for z in 0..SIZE {
+    //             let ok = space[z * SIZE * SIZE + y * SIZE + x].0;
+    //             let n = space[z * SIZE * SIZE + y * SIZE + x].1;
+    //             let rgb = oklab::oklab_to_srgb(oklab::Oklab {
+    //                 l: ok.l / n as f32,
+    //                 a: ok.a / n as f32,
+    //                 b: ok.b / n as f32,
+    //             });
+    //             print!(
+    //                 "{}{:0>2}",
+    //                 termion::color::Bg(termion::color::Rgb(rgb.r, rgb.g, rgb.b)),
+    //                 ((n as f32) / (biggest_n as f32) * 99.0) as i32
+    //             )
+    //         }
+    //         print!(" ");
+    //     }
+    //     println!();
+    // }
+
+    // println!();
+
     // println!(
     //     "{}  {}  {}  {}",
     //     max_colours.0.to_string(Ground::Background),
@@ -433,10 +461,6 @@ fn get_image_dominant_colours(img: &image::RgbImage, x0: usize, y0: usize) -> (C
     //     print!("{}\n", termion::color::Bg(termion::color::Reset));
     // }
 
-    // println!(
-    //     "\n\n{:?}, {:?}\n{:?}\n\n",
-    //     max_colours.0, max_colours.1, bit_we_care_about
-    // );
     max_colours
 
     // (Colour::from_rgb(0, 0, 0), Colour::from_rgb(0, 0, 0))
@@ -478,7 +502,7 @@ pub fn textify_dct(
         for chunk_x in 0..x_res {
             let (colour_a, colour_b) = get_image_dominant_colours(&img, chunk_x * 7, chunk_y * 16);
             let img_mat =
-                Matrix::from_image_part_with_colours(&img, chunk_x, chunk_y, &colour_a, &colour_b);
+                Matrix::from_image_part_with_colours(&img, chunk_x, chunk_y, colour_a, colour_b);
             let dct_mat = forward_dct(&img_mat);
             // println!("{}", img_mat);
             let mut min_idx = 0;
@@ -530,7 +554,7 @@ pub fn textify_spatial(
         for chunk_x in 0..x_res {
             let (colour_a, colour_b) = get_image_dominant_colours(&img, chunk_x * 7, chunk_y * 16);
             let img_mat =
-                Matrix::from_image_part_with_colours(&img, chunk_x, chunk_y, &colour_a, &colour_b);
+                Matrix::from_image_part_with_colours(&img, chunk_x, chunk_y, colour_a, colour_b);
             let mut min_idx = 0;
             let mut min_err = 1000000000000000.0;
             for (i, mat) in matrices.iter().enumerate() {
@@ -540,6 +564,12 @@ pub fn textify_spatial(
                     min_idx = i;
                 }
             }
+            // let idx = matrices
+            //     .iter()
+            //     .enumerate()
+            //     .min_by_key(|(i, mat)| img_mat.abs_difference(mat, &weights))
+            //     .unwrap()
+            //     .0;
             line.push(FmtChar {
                 ch: palette[min_idx],
                 fg: colour_b,

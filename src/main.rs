@@ -13,7 +13,7 @@ fn main() {
         .unwrap()
         .decode()
         .unwrap()
-        .resize_exact(7 * width, 16 * height, FilterType::Triangle)
+        // .resize_exact(7 * width, 16 * height, FilterType::Triangle)
         .to_rgb8();
 
     // let img_mat = Matrix::<8, 8>::from_image_part(&img, 10, 10);
