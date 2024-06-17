@@ -493,8 +493,8 @@ fn get_image_dominant_colours(img: &image::RgbImage, x0: usize, y0: usize) -> (C
 
 pub fn textify_dct(
     img: &image::RgbImage,
-    matrices: &Vec<Matrix<7, 16>>,
-    palette: &Vec<char>,
+    matrices: &[Matrix<7, 16>],
+    palette: &[char],
 ) -> Vec<FmtString> {
     let x_res = img.width() as usize / 7;
     let y_res = img.height() as usize / 16;
@@ -564,8 +564,8 @@ pub fn textify_dct(
 
 pub fn textify_spatial(
     img: &image::RgbImage,
-    matrices: &Vec<Matrix<7, 16>>,
-    palette: &Vec<char>,
+    matrices: &[Matrix<7, 16>],
+    palette: &[char],
 ) -> Vec<FmtString> {
     let x_res = img.width() as usize / 7;
     let y_res = img.height() as usize / 16;
