@@ -1,5 +1,5 @@
-use fmtstring::{Colour, FmtChar, FmtString, Ground};
-use image::{imageops::FilterType, io::Reader as ImageReader};
+use fmtstring::{Colour, FmtChar, FmtString};
+use image::{io::Reader as ImageReader};
 use std::f64::consts::PI;
 use termion::color::Rgb;
 
